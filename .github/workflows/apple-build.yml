@@ -40,7 +40,16 @@ jobs:
         run: |
           mkdir -p build-logs
           set -o pipefail
-          NUVIO_BUILD_JOBS="$(sysctl -n hw.ncpu)" ./scripts/build-apple-xcframework.sh 2>&1 | tee build-logs/build-apple-xcframework.log
+          # Source downloads (GitHub releases) intermittently return 504; the
+          # scripts skip already-downloaded archives, so retrying is safe.
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if NUVIO_BUILD_JOBS="$(sysctl -n hw.ncpu)" ./scripts/build-apple-xcframework.sh 2>&1 | tee -a build-logs/build-apple-xcframework.log; then
+              break
+            fi
+            [[ "${attempt}" == 8 ]] && exit 1
+            echo "Attempt ${attempt} failed; retrying in $((attempt * 60))s"
+            sleep $((attempt * 60))
+          done
 
       - name: Verify XCFramework
         run: |
