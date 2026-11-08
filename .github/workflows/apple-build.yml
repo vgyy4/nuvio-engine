@@ -1,0 +1,78 @@
+name: Apple XCFramework Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci-ios-build
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build NuvioEngine.xcframework
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          ls /Applications | grep -i xcode || true
+          xcodebuild -version
+          newest="$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          echo "Selecting ${newest}"
+          sudo xcode-select -s "${newest}/Contents/Developer"
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install build tools
+        run: |
+          brew install cmake ninja
+          cmake --version
+          ninja --version
+          perl -MText::Template -e 1 || sudo cpan -T Text::Template
+
+      - name: Build XCFramework
+        run: |
+          mkdir -p build-logs
+          set -o pipefail
+          NUVIO_BUILD_JOBS="$(sysctl -n hw.ncpu)" ./scripts/build-apple-xcframework.sh 2>&1 | tee build-logs/build-apple-xcframework.log
+
+      - name: Verify XCFramework
+        run: |
+          set -o pipefail
+          ./scripts/verify-apple-xcframework.sh 2>&1 | tee build-logs/verify-apple-xcframework.log
+
+      - name: Smoke test XCFramework
+        run: |
+          set -o pipefail
+          ./scripts/smoke-apple-xcframework.sh 2>&1 | tee build-logs/smoke-apple-xcframework.log
+
+      - name: Zip XCFramework
+        if: success()
+        run: |
+          cd platform/apple
+          ditto -c -k --keepParent NuvioEngine.xcframework "${GITHUB_WORKSPACE}/NuvioEngine.xcframework.zip"
+
+      - name: Upload XCFramework
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NuvioEngine.xcframework
+          path: NuvioEngine.xcframework.zip
+          if-no-files-found: error
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-build-logs
+          path: |
+            build-logs/
+            platform/apple/build/*/configure.log
+            platform/apple/build/*/build.log
+          if-no-files-found: warn
