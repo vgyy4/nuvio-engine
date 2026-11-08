@@ -31,7 +31,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install cmake ninja
+          brew install cmake ninja ripgrep
           cmake --version
           ninja --version
           perl -MText::Template -e 1 || sudo cpan -T Text::Template
