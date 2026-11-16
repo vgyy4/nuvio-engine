@@ -435,18 +435,46 @@ struct LibtorrentStreamBridge::Impl {
         route.bulk = (stream_flags & NUVIO_ENGINE_STREAM_FLAG_BULK) != 0;
         route.verified_only = route.bulk ||
             (stream_flags & NUVIO_ENGINE_STREAM_FLAG_VERIFIED_ONLY) != 0;
+        // A new stream replaces an older one only when the two serve the same
+        // purpose: a playback stream replaces the torrent's playback stream, and
+        // a stream for a file replaces the earlier stream of that same file.
+        // Bulk streams of other files (two episodes of a season pack being
+        // downloaded) and a playback stream next to them keep running.
         std::vector<std::string> previous_streams;
+        bool others_remain = false;
         {
             std::lock_guard lock(routes_mutex);
             for (const auto& [target, existing] : routes) {
                 static_cast<void>(target);
-                if (existing.torrent_id == id) {
+                if (existing.torrent_id != id) {
+                    continue;
+                }
+                if (existing.file_index == file_index || (!existing.bulk && !route.bulk)) {
                     previous_streams.push_back(existing.stream_id);
+                } else {
+                    others_remain = true;
                 }
             }
         }
         for (const auto& stream_id : previous_streams) {
             static_cast<void>(stop_stream(stream_id));
+        }
+        if (others_remain) {
+            // Preparing the new file rewrote the torrent's piece priorities from
+            // its file priorities, so the remembered schedule no longer matches
+            // what libtorrent holds. Forget it: the recompute below then
+            // rewrites every priority from the demands of all streams.
+            if (const auto schedule = current_schedules.find(id);
+                schedule != current_schedules.end()) {
+                for (const auto piece : schedule->second.deadline_order) {
+                    try {
+                        handle.reset_piece_deadline(lt::piece_index_t(static_cast<int>(piece)));
+                    } catch (...) {
+                    }
+                    requested_reads.erase(PieceKey{id, piece});
+                }
+                current_schedules.erase(schedule);
+            }
         }
         {
             std::lock_guard lock(routes_mutex);
@@ -1202,6 +1230,7 @@ struct LibtorrentStreamBridge::Impl {
                     std::ranges::none_of(partial->second, [](const bool finished) {
                         return finished;
                     }),
+                demand.route.bulk,
             });
         }
         const auto anchor = anchors.find(id);
@@ -1544,6 +1573,19 @@ struct LibtorrentStreamBridge::Impl {
         });
     }
 
+    // Files of the torrent that currently have a stream.
+    std::vector<std::uint32_t> streamed_files(const std::string& id) {
+        std::vector<std::uint32_t> result;
+        std::lock_guard lock(routes_mutex);
+        for (const auto& [target, route] : routes) {
+            static_cast<void>(target);
+            if (route.torrent_id == id) {
+                result.push_back(route.file_index);
+            }
+        }
+        return result;
+    }
+
     bool has_active_reader(const std::string& id) const {
         return !blocking_pieces(id).empty() ||
             std::ranges::any_of(active_demands, [&](const auto& entry) {
@@ -1732,8 +1774,42 @@ struct LibtorrentStreamBridge::Impl {
         return cursor;
     }
 
-    std::unordered_set<std::uint32_t> retention_protected_pieces(const std::string& id) const {
+    // Pieces the retention planner must not evict. [other_than_stream] names the
+    // stream being trimmed: every other stream of the torrent keeps what it has
+    // downloaded at and after its read position (from the start of its file
+    // when nothing is reading it), because that data is still to be delivered.
+    std::unordered_set<std::uint32_t> retention_protected_pieces(
+        const std::string& id,
+        const std::string& other_than_stream = {}
+    ) {
         std::unordered_set<std::uint32_t> result;
+        if (!other_than_stream.empty()) {
+            std::vector<StreamRoute> siblings;
+            {
+                std::lock_guard lock(routes_mutex);
+                for (const auto& [target, sibling] : routes) {
+                    static_cast<void>(target);
+                    if (sibling.torrent_id == id && sibling.stream_id != other_than_stream) {
+                        siblings.push_back(sibling);
+                    }
+                }
+            }
+            for (const auto& sibling : siblings) {
+                if (sibling.piece_size == 0 || sibling.file_size == 0) {
+                    continue;
+                }
+                const auto from = std::min(
+                    slowest_reader_cursor(sibling).value_or(0),
+                    sibling.file_size - 1
+                );
+                const auto first_piece = (sibling.file_offset + from) / sibling.piece_size;
+                const auto last_piece =
+                    (sibling.file_offset + sibling.file_size - 1) / sibling.piece_size;
+                for (auto piece = first_piece; piece <= last_piece; ++piece) {
+                    result.insert(static_cast<std::uint32_t>(piece));
+                }
+            }
+        }
         // Every active reader keeps its own read-ahead window, not just the
         // one the anchor happens to follow.
         for (const auto& [demand_id, demand] : active_demands) {
@@ -1910,7 +1986,7 @@ struct LibtorrentStreamBridge::Impl {
                 route.bulk,
             },
             retained,
-            retention_protected_pieces(route.torrent_id),
+            retention_protected_pieces(route.torrent_id, route.stream_id),
             maximum_evictions_per_check
         );
         if (evictions.empty()) {
@@ -2255,6 +2331,10 @@ std::string LibtorrentStreamBridge::stop_stream(const std::string& stream_id) {
 
 bool LibtorrentStreamBridge::has_stream_for_torrent(const std::string& torrent_id) {
     return impl_->has_stream_for_torrent(torrent_id);
+}
+
+std::vector<std::uint32_t> LibtorrentStreamBridge::streamed_files(const std::string& torrent_id) {
+    return impl_->streamed_files(torrent_id);
 }
 
 bool LibtorrentStreamBridge::has_playback_reader(const std::string& torrent_id) {

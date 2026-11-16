@@ -107,8 +107,8 @@ StreamDemandPlan build_stream_demand_plan(
             demand->piece_size,
             demand->range,
             0,
-            0,
-            0,
+            demand->bulk ? window.playback_bytes : 0,
+            demand->bulk ? window.readahead_bytes : 0,
             0,
         });
         merge_schedule(combined, schedule);

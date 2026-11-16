@@ -258,6 +258,29 @@ NUVIO_TEST("only readers keep blocking pieces beside the focused demand") {
     NUVIO_EXPECT_TRUE(!priority_for(plan, 5).has_value());
 }
 
+NUVIO_TEST("a download reader that is not the newest keeps its own readahead") {
+    auto older = demand(1, 5);
+    older.bulk = true;
+    auto newer = demand(2, 40);
+    newer.bulk = true;
+    const auto plan = build_stream_demand_plan({older, newer}, window);
+
+    NUVIO_EXPECT_EQ(plan.focused_demand_id, std::uint64_t(2));
+    NUVIO_EXPECT_EQ(priority_for(plan, 5), std::optional(PriorityClass::blocking));
+    for (std::uint32_t piece = 6; piece <= 15; ++piece) {
+        NUVIO_EXPECT_EQ(priority_for(plan, piece), std::optional(PriorityClass::playback));
+    }
+    NUVIO_EXPECT_TRUE(!priority_for(plan, 16).has_value());
+    NUVIO_EXPECT_EQ(priority_for(plan, 40), std::optional(PriorityClass::blocking));
+}
+
+NUVIO_TEST("a playback reader that is not the newest keeps only its blocking piece") {
+    const auto plan = build_stream_demand_plan({demand(1, 5), demand(2, 40)}, window);
+
+    NUVIO_EXPECT_EQ(priority_for(plan, 5), std::optional(PriorityClass::blocking));
+    NUVIO_EXPECT_TRUE(!priority_for(plan, 6).has_value());
+}
+
 NUVIO_TEST("no demands produce an empty plan") {
     const auto plan = build_stream_demand_plan({}, window);
 

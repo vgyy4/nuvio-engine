@@ -23,6 +23,10 @@ struct StreamDemand {
     http::ByteRange range;
     DemandKind kind = DemandKind::reader;
     bool cold = false;
+    // A download reader. Unlike a playback reader that is not the newest, it keeps
+    // its own read-ahead window, so several downloads of one torrent (two episodes
+    // of a season pack) progress side by side instead of one piece at a time.
+    bool bulk = false;
 };
 
 struct StreamWindow {

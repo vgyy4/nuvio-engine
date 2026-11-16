@@ -401,6 +401,14 @@ public:
                 lt::dont_download
             );
             priorities[static_cast<std::size_t>(file_index)] = lt::default_priority;
+            // Files that already have a stream (another episode of a season
+            // pack being downloaded) keep downloading: dropping them would
+            // cancel their requests and stall that stream.
+            for (const auto streamed : stream_bridge_->streamed_files(id)) {
+                if (streamed < priorities.size()) {
+                    priorities[streamed] = lt::default_priority;
+                }
+            }
             torrent->second.prioritize_files(priorities);
         } catch (...) {
             pending_prepares_.erase(id);
