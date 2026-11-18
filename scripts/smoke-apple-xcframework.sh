@@ -2,6 +2,11 @@
 set -euo pipefail
 
 ios_minimum=${NUVIO_IOS_DEPLOYMENT_TARGET:-12.0}
+# Apple silicon simulators start at iOS 14.
+simulator_arm64_minimum=$ios_minimum
+if [[ "${ios_minimum%%.*}" -lt 14 ]]; then
+    simulator_arm64_minimum=14.0
+fi
 
 script_directory=$(cd "$(dirname "$0")" && pwd -P)
 engine_root=$(cd "$script_directory/.." && pwd -P)
@@ -43,7 +48,7 @@ link_smoke \
     ios-simulator-arm64 \
     iphonesimulator \
     arm64 \
-    -mios-simulator-version-min=$ios_minimum \
+    -mios-simulator-version-min=$simulator_arm64_minimum \
     ios-arm64_x86_64-simulator
 link_smoke \
     ios-simulator-x86_64 \
