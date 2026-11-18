@@ -198,7 +198,12 @@ std::optional<std::vector<char>> read_bounded_file(
         throw std::runtime_error("state file exceeds stream size limit");
     }
     std::vector<char> contents(static_cast<std::size_t>(size));
+#if defined(NUVIO_ENGINE_USE_BOOST_FILESYSTEM)
+    // The system C++ library's std::filesystem constructor overloads do not exist on iOS 12.
+    std::ifstream input(path.string(), std::ios::binary);
+#else
     std::ifstream input(path, std::ios::binary);
+#endif
     if (!input) {
         throw std::runtime_error("open state file for reading failed");
     }

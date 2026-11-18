@@ -76,7 +76,8 @@ configure_and_build() {
         cat "$configure_log" >&2
         exit 1
     fi
-    if ! cmake --build "$build_directory" --parallel "${NUVIO_BUILD_JOBS:-8}" \
+    # -k 0: keep compiling after a failure so one run reports every error at once.
+    if ! cmake --build "$build_directory" --parallel "${NUVIO_BUILD_JOBS:-8}" -- -k 0 \
         >"$build_log" 2>&1; then
         cat "$build_log" >&2
         exit 1
