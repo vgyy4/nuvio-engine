@@ -26,8 +26,8 @@ constexpr std::size_t maximum_payload_entries = 100'000;
 
 struct Candidate {
     std::string torrent_id;
-    std::filesystem::path path;
-    std::filesystem::file_time_type last_use;
+    fs::path path;
+    fs::file_time_type last_use;
     std::uint64_t size = 0;
 };
 
@@ -53,7 +53,7 @@ void increment(std::uint64_t& value) {
     }
 }
 
-std::uint64_t stored_file_size(const std::filesystem::path& path) {
+std::uint64_t stored_file_size(const fs::path& path) {
 #if defined(_WIN32)
     const auto handle = CreateFileW(
         path.c_str(),
@@ -126,17 +126,13 @@ std::uint64_t stored_file_size(const std::filesystem::path& path) {
 }
 
 std::uint64_t directory_size(
-    const std::filesystem::path& root,
+    const fs::path& root,
     std::size_t& inspected_entries
 ) {
     std::uint64_t size = 0;
-    std::error_code error;
-    std::filesystem::recursive_directory_iterator entries(
-        root,
-        std::filesystem::directory_options::none,
-        error
-    );
-    if (error == std::errc::no_such_file_or_directory) {
+    fs::error_code error;
+    auto entries = fs::make_recursive_iterator(root, error);
+    if (fs::is_missing(error)) {
         return 0;
     }
     if (error) {
@@ -150,7 +146,7 @@ std::uint64_t directory_size(
         if (error) {
             throw std::system_error(error, "inspect torrent payload entry");
         }
-        if (status.type() != std::filesystem::file_type::regular) {
+        if (fs::kind_of(status) != fs::file_kind::regular) {
             continue;
         }
         saturating_add(size, stored_file_size(entry.path()));
@@ -159,20 +155,20 @@ std::uint64_t directory_size(
 }
 
 template <typename Visitor>
-void visit_torrent_directories(const std::filesystem::path& root, Visitor&& visit) {
-    std::error_code error;
-    const auto root_status = std::filesystem::symlink_status(root, error);
-    if (error == std::errc::no_such_file_or_directory ||
-        root_status.type() == std::filesystem::file_type::not_found) {
+void visit_torrent_directories(const fs::path& root, Visitor&& visit) {
+    fs::error_code error;
+    const auto root_status = fs::symlink_status(root, error);
+    if (fs::is_missing(error) ||
+        fs::kind_of(root_status) == fs::file_kind::not_found) {
         return;
     }
     if (error) {
         throw std::system_error(error, "inspect disk cache root");
     }
-    if (root_status.type() != std::filesystem::file_type::directory) {
+    if (fs::kind_of(root_status) != fs::file_kind::directory) {
         throw std::runtime_error("disk cache root is not a real directory");
     }
-    std::filesystem::directory_iterator entries(root, error);
+    fs::directory_iterator entries(root, error);
     if (error) {
         throw std::system_error(error, "scan disk cache root");
     }
@@ -189,7 +185,7 @@ void visit_torrent_directories(const std::filesystem::path& root, Visitor&& visi
         if (!canonical_torrent_id(id)) {
             continue;
         }
-        if (status.type() != std::filesystem::file_type::directory) {
+        if (fs::kind_of(status) != fs::file_kind::directory) {
             throw std::runtime_error(
                 "canonical disk cache entry is not a real directory"
             );
@@ -201,7 +197,7 @@ void visit_torrent_directories(const std::filesystem::path& root, Visitor&& visi
 }
 
 DiskCacheManager::DiskCacheManager(
-    std::filesystem::path payload_root,
+    fs::path payload_root,
     const std::uint64_t capacity_bytes
 )
     : payload_root_(std::move(payload_root)) {
@@ -213,21 +209,21 @@ void DiskCacheManager::touch(const std::string& torrent_id) {
         throw std::invalid_argument("disk cache touch requires a canonical torrent ID");
     }
     const auto path = payload_root_ / torrent_id;
-    std::error_code error;
-    const auto status = std::filesystem::symlink_status(path, error);
-    if (error == std::errc::no_such_file_or_directory ||
-        status.type() == std::filesystem::file_type::not_found) {
+    fs::error_code error;
+    const auto status = fs::symlink_status(path, error);
+    if (fs::is_missing(error) ||
+        fs::kind_of(status) == fs::file_kind::not_found) {
         return;
     }
     if (error) {
         throw std::system_error(error, "inspect disk cache entry");
     }
-    if (status.type() != std::filesystem::file_type::directory) {
+    if (fs::kind_of(status) != fs::file_kind::directory) {
         throw std::runtime_error("disk cache entry is not a real directory");
     }
-    std::filesystem::last_write_time(
+    fs::last_write_time(
         path,
-        std::filesystem::file_time_type::clock::now(),
+        fs::now_file_time(),
         error
     );
     if (error) {
@@ -253,7 +249,7 @@ DiskCacheStats DiskCacheManager::enforce(
     std::size_t inspected_entries = 0;
     visit_torrent_directories(
         payload_root_,
-        [&](const std::string& id, const std::filesystem::directory_entry& entry) {
+        [&](const std::string& id, const fs::directory_entry& entry) {
             const auto size = directory_size(entry.path(), inspected_entries);
             sizes.emplace(id, size);
             saturating_add(used, size);
@@ -261,8 +257,8 @@ DiskCacheStats DiskCacheManager::enforce(
                 saturating_add(protected_bytes, size);
                 return;
             }
-            std::error_code error;
-            const auto last_use = entry.last_write_time(error);
+            fs::error_code error;
+            const auto last_use = fs::last_write_time(entry.path(), error);
             if (error) {
                 throw std::system_error(error, "inspect disk cache recency");
             }
@@ -281,8 +277,8 @@ DiskCacheStats DiskCacheManager::enforce(
         if (used <= target_bytes) {
             break;
         }
-        std::error_code error;
-        const auto removed = std::filesystem::remove_all(candidate.path, error);
+        fs::error_code error;
+        const auto removed = fs::remove_all(candidate.path, error);
         if (error) {
             throw std::system_error(error, "evict disk cache directory");
         }
@@ -309,7 +305,7 @@ DiskCacheStats DiskCacheManager::measure(
     std::size_t inspected_entries = 0;
     visit_torrent_directories(
         payload_root_,
-        [&](const std::string& id, const std::filesystem::directory_entry& entry) {
+        [&](const std::string& id, const fs::directory_entry& entry) {
             const auto is_protected = protected_torrents.contains(id);
             const auto known = measured_sizes_.find(id);
             const auto size = !is_protected && known != measured_sizes_.end()

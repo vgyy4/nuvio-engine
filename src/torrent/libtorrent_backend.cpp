@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
-#include <filesystem>
+#include "util/fs.hpp"
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -196,8 +196,8 @@ lt::settings_pack make_settings(const ProtocolBackendConfig& config) {
     return settings;
 }
 
-std::filesystem::path state_root(const ProtocolBackendConfig& config) {
-    return std::filesystem::path(config.state_directory) / "nuvio-engine-state";
+fs::path state_root(const ProtocolBackendConfig& config) {
+    return fs::path(config.state_directory) / "nuvio-engine-state";
 }
 
 struct SessionBootstrap {
@@ -875,7 +875,7 @@ private:
           resume_directory_(state_root_ / "resume"),
           session_state_path_(state_root_ / "session.dht"),
           payload_directory_(
-              std::filesystem::path(config.download_directory) / "payload"
+              fs::path(config.download_directory) / "payload"
           ),
           warm_torrent_timeout_(config.warm_torrent_timeout_milliseconds),
           disk_cache_(payload_directory_, config.disk_cache_capacity_bytes),
@@ -912,55 +912,55 @@ private:
         return torrent_id(handle.info_hashes());
     }
 
-    [[nodiscard]] std::filesystem::path resume_path(const std::string& id) const {
+    [[nodiscard]] fs::path resume_path(const std::string& id) const {
         return resume_directory_ / (id + ".resume");
     }
 
-    [[nodiscard]] std::filesystem::path prepare_payload_path(
+    [[nodiscard]] fs::path prepare_payload_path(
         const std::string& id
     ) const {
         if (!is_canonical_torrent_id(id)) {
             throw std::runtime_error("payload path requires a canonical info hash");
         }
-        std::error_code error;
-        std::filesystem::create_directories(payload_directory_, error);
+        fs::error_code error;
+        fs::create_directories(payload_directory_, error);
         if (error) {
             throw std::system_error(error, "create torrent payload root");
         }
-        const auto root_status = std::filesystem::symlink_status(
+        const auto root_status = fs::symlink_status(
             payload_directory_,
             error
         );
         if (error) {
             throw std::system_error(error, "inspect torrent payload root");
         }
-        if (root_status.type() != std::filesystem::file_type::directory) {
+        if (fs::kind_of(root_status) != fs::file_kind::directory) {
             throw std::runtime_error("torrent payload root is not a real directory");
         }
         const auto target = payload_directory_ / id;
-        const auto target_status = std::filesystem::symlink_status(target, error);
-        const auto missing = error == std::errc::no_such_file_or_directory ||
-            target_status.type() == std::filesystem::file_type::not_found;
+        const auto target_status = fs::symlink_status(target, error);
+        const auto missing = fs::is_missing(error) ||
+            fs::kind_of(target_status) == fs::file_kind::not_found;
         if (error && !missing) {
             throw std::system_error(error, "inspect torrent payload directory");
         }
         if (!missing &&
-            target_status.type() != std::filesystem::file_type::directory) {
+            fs::kind_of(target_status) != fs::file_kind::directory) {
             throw std::runtime_error("torrent payload path is not a real directory");
         }
         if (missing) {
             error.clear();
-            const auto created = std::filesystem::create_directory(target, error);
+            const auto created = fs::create_directory(target, error);
             if (error) {
                 throw std::system_error(error, "create torrent payload directory");
             }
             if (!created) {
-                const auto raced_status = std::filesystem::symlink_status(
+                const auto raced_status = fs::symlink_status(
                     target,
                     error
                 );
                 if (error ||
-                    raced_status.type() != std::filesystem::file_type::directory) {
+                    fs::kind_of(raced_status) != fs::file_kind::directory) {
                     throw std::runtime_error(
                         "torrent payload directory creation was replaced"
                     );
@@ -2065,10 +2065,10 @@ private:
         }
     }
 
-    std::filesystem::path state_root_;
-    std::filesystem::path resume_directory_;
-    std::filesystem::path session_state_path_;
-    std::filesystem::path payload_directory_;
+    fs::path state_root_;
+    fs::path resume_directory_;
+    fs::path session_state_path_;
+    fs::path payload_directory_;
     const std::chrono::milliseconds warm_torrent_timeout_;
     cache::DiskCacheManager disk_cache_;
     std::unordered_map<RequestContext*, std::unique_ptr<RequestContext>> pending_;

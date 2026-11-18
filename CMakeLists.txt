@@ -11,6 +11,11 @@ include(GNUInstallDirs)
 find_package(Threads REQUIRED)
 
 option(NUVIO_ENGINE_BUILD_SHARED "Build Nuvio Engine as a shared library" OFF)
+option(
+    NUVIO_ENGINE_USE_BOOST_FILESYSTEM
+    "Use Boost.Filesystem instead of std::filesystem (needed for iOS 12)"
+    OFF
+)
 option(NUVIO_ENGINE_ENABLE_LIBTORRENT "Build the pinned libtorrent protocol backend" OFF)
 set(NUVIO_ENGINE_BUILD_TESTS_DEFAULT OFF)
 if(PROJECT_IS_TOP_LEVEL)
@@ -62,6 +67,14 @@ if(NUVIO_ENGINE_ENABLE_LIBTORRENT)
     )
     target_link_libraries(nuvio_engine PRIVATE $<BUILD_INTERFACE:torrent-rasterbar>)
     target_compile_definitions(nuvio_engine PRIVATE NUVIO_ENGINE_HAS_LIBTORRENT=1)
+    if(NUVIO_ENGINE_USE_BOOST_FILESYSTEM)
+        # iOS 12 has no std::filesystem in its system C++ library: use the
+        # Boost.Filesystem sources of the pinned Boost release instead.
+        nuvio_engine_add_boost_filesystem()
+        target_link_libraries(nuvio_engine PRIVATE $<BUILD_INTERFACE:nuvio_boost_filesystem>)
+        target_compile_definitions(nuvio_engine PRIVATE NUVIO_ENGINE_USE_BOOST_FILESYSTEM=1)
+        target_include_directories(nuvio_engine PRIVATE ${nuvio_boost_filesystem_include_dir})
+    endif()
     if(APPLE)
         find_package(OpenSSL REQUIRED)
         find_library(NUVIO_SECURITY_FRAMEWORK Security REQUIRED)

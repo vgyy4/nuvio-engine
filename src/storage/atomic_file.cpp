@@ -20,7 +20,7 @@
 namespace nuvio::storage {
 namespace {
 
-std::filesystem::path temporary_path(const std::filesystem::path& path) {
+fs::path temporary_path(const fs::path& path) {
     auto temporary = path;
     temporary += ".tmp";
     return temporary;
@@ -52,8 +52,8 @@ void write_all(const HANDLE file, std::span<const char> contents) {
 }
 
 void commit_file(
-    const std::filesystem::path& temporary,
-    const std::filesystem::path& destination,
+    const fs::path& temporary,
+    const fs::path& destination,
     std::span<const char> contents
 ) {
     const auto file = CreateFileW(
@@ -108,7 +108,7 @@ void write_all(const int file, std::span<const char> contents) {
     }
 }
 
-void sync_parent_directory(const std::filesystem::path& destination) {
+void sync_parent_directory(const fs::path& destination) {
     auto parent = destination.parent_path();
     if (parent.empty()) {
         parent = ".";
@@ -132,8 +132,8 @@ void sync_parent_directory(const std::filesystem::path& destination) {
 }
 
 void commit_file(
-    const std::filesystem::path& temporary,
-    const std::filesystem::path& destination,
+    const fs::path& temporary,
+    const fs::path& destination,
     std::span<const char> contents
 ) {
     auto flags = O_WRONLY | O_CREAT | O_EXCL;
@@ -170,22 +170,22 @@ void commit_file(
 }
 
 std::optional<std::vector<char>> read_bounded_file(
-    const std::filesystem::path& path,
+    const fs::path& path,
     const std::size_t maximum_size
 ) {
-    std::error_code error;
-    const auto status = std::filesystem::symlink_status(path, error);
-    if (error == std::errc::no_such_file_or_directory ||
-        status.type() == std::filesystem::file_type::not_found) {
+    fs::error_code error;
+    const auto status = fs::symlink_status(path, error);
+    if (fs::is_missing(error) ||
+        fs::kind_of(status) == fs::file_kind::not_found) {
         return std::nullopt;
     }
     if (error) {
         throw std::system_error(error, "inspect state file");
     }
-    if (status.type() != std::filesystem::file_type::regular) {
+    if (fs::kind_of(status) != fs::file_kind::regular) {
         throw std::runtime_error("state file is not a regular file");
     }
-    const auto size = std::filesystem::file_size(path, error);
+    const auto size = fs::file_size(path, error);
     if (error) {
         throw std::system_error(error, "inspect state file");
     }
@@ -215,7 +215,7 @@ std::optional<std::vector<char>> read_bounded_file(
 }
 
 void write_file_atomically(
-    const std::filesystem::path& path,
+    const fs::path& path,
     const std::span<const char> contents
 ) {
     if (path.empty() || path.filename().empty()) {
@@ -223,23 +223,23 @@ void write_file_atomically(
     }
     const auto parent = path.parent_path();
     if (!parent.empty()) {
-        std::filesystem::create_directories(parent);
+        fs::create_directories(parent);
     }
     const auto temporary = temporary_path(path);
-    std::error_code ignored;
-    std::filesystem::remove(temporary, ignored);
+    fs::error_code ignored;
+    fs::remove(temporary, ignored);
     try {
         commit_file(temporary, path, contents);
     } catch (...) {
-        std::filesystem::remove(temporary, ignored);
+        fs::remove(temporary, ignored);
         throw;
     }
 }
 
-void remove_file_if_present(const std::filesystem::path& path) {
-    std::error_code error;
-    std::filesystem::remove(path, error);
-    if (error && error != std::errc::no_such_file_or_directory) {
+void remove_file_if_present(const fs::path& path) {
+    fs::error_code error;
+    fs::remove(path, error);
+    if (error && !fs::is_missing(error)) {
         throw std::system_error(error, "remove state file");
     }
 }

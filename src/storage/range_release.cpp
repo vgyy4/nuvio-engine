@@ -42,7 +42,7 @@ bool range_fits(const std::uint64_t offset, const std::uint64_t length) {
 
 class FileHandle {
 public:
-    FileHandle(const std::filesystem::path& path, const DWORD access, const DWORD disposition)
+    FileHandle(const fs::path& path, const DWORD access, const DWORD disposition)
         : value_(CreateFileW(
               path.c_str(),
               access,
@@ -80,7 +80,7 @@ bool unsupported_error(const DWORD error) {
         error == ERROR_USER_MAPPED_FILE;
 }
 
-bool write_probe(const std::filesystem::path& path) {
+bool write_probe(const fs::path& path) {
     const FileHandle file(path, GENERIC_WRITE, CREATE_NEW);
     if (!file.is_open()) {
         return false;
@@ -101,7 +101,7 @@ bool write_probe(const std::filesystem::path& path) {
 
 class Descriptor {
 public:
-    Descriptor(const std::filesystem::path& path, const int flags, const mode_t mode = 0) {
+    Descriptor(const fs::path& path, const int flags, const mode_t mode = 0) {
         do {
             value_ = ::open(path.c_str(), flags | O_CLOEXEC, mode);
         } while (value_ < 0 && errno == EINTR);
@@ -191,7 +191,7 @@ RangeRelease release_descriptor_range(
 #endif
 }
 
-bool write_probe(const std::filesystem::path& path) {
+bool write_probe(const fs::path& path) {
     const Descriptor file(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (!file.is_open()) {
         return false;
@@ -219,7 +219,7 @@ bool write_probe(const std::filesystem::path& path) {
 }
 
 RangeRelease release_file_range(
-    const std::filesystem::path& path,
+    const fs::path& path,
     const std::uint64_t offset,
     const std::uint64_t length
 ) {
@@ -269,7 +269,7 @@ RangeRelease release_file_range(
 #endif
 }
 
-std::uint64_t allocated_file_bytes(const std::filesystem::path& path) {
+std::uint64_t allocated_file_bytes(const fs::path& path) {
 #if defined(_WIN32)
     const FileHandle file(path, FILE_READ_ATTRIBUTES, OPEN_EXISTING);
     if (!file.is_open()) {
@@ -300,9 +300,9 @@ std::uint64_t allocated_file_bytes(const std::filesystem::path& path) {
 #endif
 }
 
-bool supports_range_release(const std::filesystem::path& directory) {
-    std::error_code error;
-    std::filesystem::create_directories(directory, error);
+bool supports_range_release(const fs::path& directory) {
+    fs::error_code error;
+    fs::create_directories(directory, error);
     if (error) {
         return false;
     }
@@ -319,7 +319,7 @@ bool supports_range_release(const std::filesystem::path& directory) {
     } catch (...) {
         supported = false;
     }
-    std::filesystem::remove(path, error);
+    fs::remove(path, error);
     return supported;
 }
 

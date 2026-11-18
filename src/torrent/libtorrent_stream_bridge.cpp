@@ -17,7 +17,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
-#include <filesystem>
+#include "util/fs.hpp"
 #include <functional>
 #include <limits>
 #include <map>
@@ -259,7 +259,7 @@ struct LibtorrentStreamBridge::Impl {
         std::uint32_t piece_size = 0;
         std::uint64_t file_offset = 0;
         std::uint64_t file_size = 0;
-        std::filesystem::path payload_path;
+        fs::path payload_path;
         std::shared_ptr<StreamActivity> activity;
         std::shared_ptr<StreamCounters> counters = std::make_shared<StreamCounters>();
         // Never serve blocks before their piece has passed its hash check.
@@ -334,7 +334,7 @@ struct LibtorrentStreamBridge::Impl {
 
     struct TorrentRetention {
         lt::torrent_handle handle;
-        std::filesystem::path save_path;
+        fs::path save_path;
         std::vector<EvictedPiece> evicted;
         std::chrono::steady_clock::time_point next_save_request{};
         bool release_supported = true;
@@ -425,7 +425,7 @@ struct LibtorrentStreamBridge::Impl {
             static_cast<std::uint32_t>(metadata->piece_length()),
             file.offset,
             file.size,
-            std::filesystem::path(metadata->files().file_path(
+            fs::path(metadata->files().file_path(
                 lt::file_index_t(static_cast<int>(file_index)),
                 handle.status(lt::torrent_handle::query_save_path).save_path
             )),
@@ -1748,7 +1748,7 @@ struct LibtorrentStreamBridge::Impl {
         if (found == retention.end()) {
             TorrentRetention state;
             state.handle = route.handle;
-            state.save_path = std::filesystem::path(
+            state.save_path = fs::path(
                 route.handle.status(lt::torrent_handle::query_save_path).save_path
             );
             found = retention.emplace(route.torrent_id, std::move(state)).first;
@@ -1862,7 +1862,7 @@ struct LibtorrentStreamBridge::Impl {
         return result;
     }
 
-    bool range_release_available(const std::filesystem::path& directory) {
+    bool range_release_available(const fs::path& directory) {
         if (!range_release_supported.has_value()) {
             range_release_supported = storage::supports_range_release(directory);
         }
@@ -1870,7 +1870,7 @@ struct LibtorrentStreamBridge::Impl {
     }
 
     std::uint64_t retention_budget(
-        const std::filesystem::path& save_path,
+        const fs::path& save_path,
         const std::uint64_t retained_bytes,
         const std::uint64_t evicting_bytes
     ) const {
@@ -1879,8 +1879,8 @@ struct LibtorrentStreamBridge::Impl {
             saturating_sum(retained_behind_bytes, 2 * retained_edge_bytes)
         );
         auto budget = std::max(disk_capacity, minimum);
-        std::error_code error;
-        const auto space = std::filesystem::space(save_path, error);
+        fs::error_code error;
+        const auto space = fs::space(save_path, error);
         if (!error) {
             const auto usable = saturating_sum(
                 saturating_sum(retained_bytes, evicting_bytes),
@@ -2086,7 +2086,7 @@ struct LibtorrentStreamBridge::Impl {
                     continue;
                 }
                 const auto released = storage::release_file_range(
-                    std::filesystem::path(files.file_path(
+                    fs::path(files.file_path(
                         slice.file_index,
                         state.save_path.string()
                     )),

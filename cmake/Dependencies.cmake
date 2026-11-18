@@ -165,3 +165,41 @@ function(nuvio_engine_add_libtorrent)
     )
     cmake_policy(POP)
 endfunction()
+
+function(nuvio_engine_add_boost_filesystem)
+    if(TARGET nuvio_boost_filesystem)
+        return()
+    endif()
+    FetchContent_GetProperties(nuvio_boost SOURCE_DIR nuvio_boost_dir)
+    if(NOT nuvio_boost_dir)
+        message(FATAL_ERROR "Boost sources are not available for Boost.Filesystem")
+    endif()
+    set(filesystem_sources
+        "${nuvio_boost_dir}/libs/filesystem/src/codecvt_error_category.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/directory.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/exception.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/operations.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/path.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/path_traits.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/portability.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/unique_path.cpp"
+        "${nuvio_boost_dir}/libs/filesystem/src/utf8_codecvt_facet.cpp"
+    )
+    if(WIN32)
+        list(APPEND filesystem_sources "${nuvio_boost_dir}/libs/filesystem/src/windows_file_codecvt.cpp")
+    endif()
+    add_library(nuvio_boost_filesystem STATIC ${filesystem_sources})
+    target_include_directories(nuvio_boost_filesystem PUBLIC "${nuvio_boost_dir}")
+    target_compile_definitions(
+        nuvio_boost_filesystem
+        PUBLIC
+            BOOST_ALL_NO_LIB=1
+            BOOST_FILESYSTEM_STATIC_LINK=1
+            BOOST_FILESYSTEM_NO_DEPRECATED=1
+            BOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF=1
+            BOOST_SYSTEM_NO_DEPRECATED=1
+    )
+    target_compile_features(nuvio_boost_filesystem PUBLIC cxx_std_17)
+    set_target_properties(nuvio_boost_filesystem PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    set(nuvio_boost_filesystem_include_dir "${nuvio_boost_dir}" PARENT_SCOPE)
+endfunction()

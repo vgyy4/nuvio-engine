@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ios_minimum=${NUVIO_IOS_DEPLOYMENT_TARGET:-12.0}
+
 script_directory=$(cd "$(dirname "$0")" && pwd -P)
 engine_root=$(cd "$script_directory/.." && pwd -P)
 xcframework="${1:-$engine_root/platform/apple/NuvioEngine.xcframework}"
@@ -36,18 +38,18 @@ link_smoke() {
 
 link_smoke macos-arm64 macosx arm64 -mmacosx-version-min=11.0 macos-arm64_x86_64
 link_smoke macos-x86_64 macosx x86_64 -mmacosx-version-min=11.0 macos-arm64_x86_64
-link_smoke ios-arm64 iphoneos arm64 -miphoneos-version-min=15.0 ios-arm64
+link_smoke ios-arm64 iphoneos arm64 -miphoneos-version-min=$ios_minimum ios-arm64
 link_smoke \
     ios-simulator-arm64 \
     iphonesimulator \
     arm64 \
-    -mios-simulator-version-min=15.0 \
+    -mios-simulator-version-min=$ios_minimum \
     ios-arm64_x86_64-simulator
 link_smoke \
     ios-simulator-x86_64 \
     iphonesimulator \
     x86_64 \
-    -mios-simulator-version-min=15.0 \
+    -mios-simulator-version-min=$ios_minimum \
     ios-arm64_x86_64-simulator
 
 host_architecture=$(uname -m)

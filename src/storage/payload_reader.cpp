@@ -17,7 +17,7 @@
 
 namespace nuvio::storage {
 
-PayloadReader::PayloadReader(const std::filesystem::path& path) {
+PayloadReader::PayloadReader(const fs::path& path) {
 #if defined(_WIN32)
     const auto handle = CreateFileW(
         path.c_str(),

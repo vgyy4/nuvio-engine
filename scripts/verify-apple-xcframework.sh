@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ios_minimum=${NUVIO_IOS_DEPLOYMENT_TARGET:-12.0}
+
 script_directory=$(cd "$(dirname "$0")" && pwd -P)
 engine_root=$(cd "$script_directory/.." && pwd -P)
 apple_root="$engine_root/platform/apple"
@@ -92,12 +94,12 @@ assert_architectures "$simulator/libCNuvioEngine.a" arm64 x86_64
 temporary_directory=$(mktemp -d)
 trap 'rm -rf "$temporary_directory"' EXIT
 assert_build_version "$macos/libCNuvioEngine.a" arm64 MACOS 11.0 macos-arm64
-assert_build_version "$ios/libCNuvioEngine.a" arm64 IOS 15.0 ios-arm64
+assert_build_version "$ios/libCNuvioEngine.a" arm64 IOS "$ios_minimum" ios-arm64
 assert_build_version \
     "$simulator/libCNuvioEngine.a" \
     arm64 \
     IOSSIMULATOR \
-    15.0 \
+    "$ios_minimum" \
     ios-simulator-arm64
 
 api_symbols=(

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ios_deployment_target=15.0
+# The iOS floor of the library. Below 13 there is no std::filesystem in the system C++
+# library, so Boost.Filesystem is compiled in instead (see src/util/fs.hpp).
+ios_deployment_target=${NUVIO_IOS_DEPLOYMENT_TARGET:-12.0}
 macos_deployment_target=11.0
 
 script_directory=$(cd "$(dirname "$0")" && pwd -P)
@@ -61,6 +63,9 @@ configure_and_build() {
         -DFETCHCONTENT_SOURCE_DIR_NUVIO_BOOST="$boost_source"
         -DFETCHCONTENT_SOURCE_DIR_NUVIO_LIBTORRENT="$libtorrent_source"
     )
+    if [[ "$system_name" == iOS && "${deployment_target%%.*}" -lt 13 ]]; then
+        arguments+=(-DNUVIO_ENGINE_USE_BOOST_FILESYSTEM=ON)
+    fi
     if [[ -n "$system_name" ]]; then
         arguments+=(
             -DCMAKE_SYSTEM_NAME="$system_name"
@@ -109,12 +114,18 @@ merge_slice() {
     local merge_log="$destination/merge.log"
     cmake -E remove_directory "$destination"
     mkdir -p "$destination"
+    local archives=(
+        "$build_directory/libnuvio_engine.a"
+        "$build_directory/_deps/nuvio_libtorrent-build/libtorrent-rasterbar.a"
+        "$openssl_root/lib/libssl.a"
+        "$openssl_root/lib/libcrypto.a"
+    )
+    if [[ -f "$build_directory/libnuvio_boost_filesystem.a" ]]; then
+        archives+=("$build_directory/libnuvio_boost_filesystem.a")
+    fi
     if ! xcrun libtool -static \
         -o "$destination/libCNuvioEngine.a" \
-        "$build_directory/libnuvio_engine.a" \
-        "$build_directory/_deps/nuvio_libtorrent-build/libtorrent-rasterbar.a" \
-        "$openssl_root/lib/libssl.a" \
-        "$openssl_root/lib/libcrypto.a" \
+        "${archives[@]}" \
         >"$merge_log" 2>&1; then
         cat "$merge_log" >&2
         exit 1

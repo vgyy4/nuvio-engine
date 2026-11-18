@@ -2,7 +2,7 @@
 #define NUVIO_ENGINE_PAYLOAD_READER_HPP
 
 #include <cstdint>
-#include <filesystem>
+#include "util/fs.hpp"
 #include <span>
 
 namespace nuvio::storage {
@@ -10,7 +10,7 @@ namespace nuvio::storage {
 class PayloadReader {
 public:
     PayloadReader() = default;
-    explicit PayloadReader(const std::filesystem::path& path);
+    explicit PayloadReader(const fs::path& path);
     ~PayloadReader();
 
     PayloadReader(const PayloadReader&) = delete;

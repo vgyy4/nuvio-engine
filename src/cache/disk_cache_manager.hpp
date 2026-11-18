@@ -2,7 +2,7 @@
 #define NUVIO_ENGINE_DISK_CACHE_MANAGER_HPP
 
 #include <cstdint>
-#include <filesystem>
+#include "util/fs.hpp"
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,7 +20,7 @@ struct DiskCacheStats {
 
 class DiskCacheManager {
 public:
-    DiskCacheManager(std::filesystem::path payload_root, std::uint64_t capacity_bytes);
+    DiskCacheManager(fs::path payload_root, std::uint64_t capacity_bytes);
 
     void touch(const std::string& torrent_id);
     [[nodiscard]] DiskCacheStats enforce(
@@ -36,7 +36,7 @@ public:
     [[nodiscard]] const DiskCacheStats& stats() const;
 
 private:
-    std::filesystem::path payload_root_;
+    fs::path payload_root_;
     DiskCacheStats stats_;
     std::unordered_map<std::string, std::uint64_t> measured_sizes_;
 };
