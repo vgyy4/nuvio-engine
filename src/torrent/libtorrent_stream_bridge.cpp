@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <deque>
 #include "util/fs.hpp"
+#include "util/stop.hpp"
 #include <functional>
 #include <limits>
 #include <map>
@@ -386,7 +387,7 @@ struct LibtorrentStreamBridge::Impl {
               [this](
                   const http::HttpRequest& request,
                   const http::LoopbackServer::Writer& writer,
-                  const std::stop_token token
+                  const stopping::stop_token token
               ) {
                   handle_http(request, writer, token);
               },
@@ -500,7 +501,7 @@ struct LibtorrentStreamBridge::Impl {
     void handle_http(
         const http::HttpRequest& request,
         const http::LoopbackServer::Writer& writer,
-        const std::stop_token token
+        const stopping::stop_token token
     ) {
         StreamRoute route;
         {
@@ -572,7 +573,7 @@ struct LibtorrentStreamBridge::Impl {
         const StreamRoute& route,
         const http::ByteRange range,
         const http::LoopbackServer::Writer& writer,
-        const std::stop_token token
+        const stopping::stop_token token
     ) {
         if (range.end > std::numeric_limits<std::uint64_t>::max() - route.file_offset) {
             return;
@@ -628,7 +629,7 @@ struct LibtorrentStreamBridge::Impl {
         const http::ByteRange demand_range,
         std::optional<storage::PayloadReader>& payload,
         const http::LoopbackServer::Writer& writer,
-        const std::stop_token token
+        const stopping::stop_token token
     ) {
         auto waiter = std::make_shared<PieceWaiter>();
         waiter->demand_id = demand_id;
@@ -643,7 +644,7 @@ struct LibtorrentStreamBridge::Impl {
             })) {
             return false;
         }
-        std::stop_callback stop_wait(token, [waiter] {
+        stopping::stop_callback stop_wait(token, [waiter] {
             {
                 std::lock_guard lock(waiter->mutex);
             }

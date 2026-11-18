@@ -14,6 +14,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include "util/stop.hpp"
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -110,7 +111,7 @@ void shutdown_socket(const NativeSocket socket) {
 void monitor_client_disconnect(
     const NativeSocket socket,
     const std::atomic_bool& finishing,
-    std::stop_source& request_stop
+    stopping::stop_source& request_stop
 ) {
 #if defined(_WIN32)
     while (!finishing.load()) {
@@ -197,7 +198,7 @@ void monitor_client_disconnect(
 
 class DisconnectMonitor {
 public:
-    DisconnectMonitor(const NativeSocket socket, std::stop_source& request_stop)
+    DisconnectMonitor(const NativeSocket socket, stopping::stop_source& request_stop)
         : socket_(socket),
           request_stop_(request_stop),
           thread_([this] {
@@ -218,7 +219,7 @@ public:
 
 private:
     NativeSocket socket_;
-    std::stop_source& request_stop_;
+    stopping::stop_source& request_stop_;
     std::atomic_bool finishing_ = false;
     std::thread thread_;
 };
@@ -343,7 +344,7 @@ bool configure_client_socket(const NativeSocket socket) {
 bool send_all(
     const NativeSocket socket,
     const std::span<const char> contents,
-    const std::stop_token stop_token
+    const stopping::stop_token stop_token
 ) {
     std::size_t offset = 0;
     const auto write_deadline = std::chrono::steady_clock::now() + response_write_grace +
@@ -392,7 +393,7 @@ bool send_all(
 
 std::optional<std::string> receive_request_head(
     const NativeSocket socket,
-    const std::stop_token stop_token,
+    const stopping::stop_token stop_token,
     bool& exceeded_limit
 ) {
     std::string received;
@@ -507,14 +508,14 @@ struct LoopbackServer::Impl {
         try {
             workers.reserve(worker_count);
             for (std::size_t index = 0; index < worker_count; ++index) {
-                workers.emplace_back([this](const std::stop_token token) {
+                workers.emplace_back([this](const stopping::stop_token token) {
                     try {
                         worker_loop(token);
                     } catch (...) {
                     }
                 });
             }
-            accepter = std::jthread([this](const std::stop_token token) {
+            accepter = stopping::jthread([this](const stopping::stop_token token) {
                 try {
                     accept_loop(token);
                 } catch (...) {
@@ -563,7 +564,7 @@ struct LoopbackServer::Impl {
         workers.clear();
     }
 
-    void accept_loop(const std::stop_token token) {
+    void accept_loop(const stopping::stop_token token) {
         while (!token.stop_requested() && !stopping.load()) {
             const auto listening_socket = listener.load();
             if (listening_socket == invalid_socket) {
@@ -595,7 +596,7 @@ struct LoopbackServer::Impl {
         }
     }
 
-    void worker_loop(const std::stop_token token) {
+    void worker_loop(const stopping::stop_token token) {
         while (!token.stop_requested()) {
             std::shared_ptr<SharedSocket> connection;
             {
@@ -624,7 +625,7 @@ struct LoopbackServer::Impl {
 
     void handle_connection(
         const std::shared_ptr<SharedSocket>& connection,
-        const std::stop_token token
+        const stopping::stop_token token
     ) {
         const auto client = connection->get();
         if (client == invalid_socket) {
@@ -654,8 +655,8 @@ struct LoopbackServer::Impl {
             return;
         }
 
-        std::stop_source request_stop;
-        std::stop_callback worker_stop(token, [&request_stop] {
+        stopping::stop_source request_stop;
+        stopping::stop_callback worker_stop(token, [&request_stop] {
             request_stop.request_stop();
         });
         DisconnectMonitor disconnect_monitor(client, request_stop);
@@ -700,8 +701,8 @@ struct LoopbackServer::Impl {
     std::condition_variable queue_ready;
     std::deque<std::shared_ptr<SharedSocket>> queue;
     std::unordered_set<std::shared_ptr<SharedSocket>> active_connections;
-    std::vector<std::jthread> workers;
-    std::jthread accepter;
+    std::vector<stopping::jthread> workers;
+    stopping::jthread accepter;
 };
 
 LoopbackServer::LoopbackServer(

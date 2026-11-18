@@ -6,7 +6,7 @@
 #include <functional>
 #include <memory>
 #include <span>
-#include <stop_token>
+#include "util/stop.hpp"
 
 #include "nuvio_engine/http_protocol.hpp"
 
@@ -18,7 +18,7 @@ public:
     using Handler = std::function<void(
         const HttpRequest&,
         const Writer&,
-        std::stop_token
+        stopping::stop_token
     )>;
 
     explicit LoopbackServer(
